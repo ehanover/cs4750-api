@@ -14,11 +14,15 @@ process.env.DB_HOST='34.85.177.29:3306';
 
 const express = require('express');
 const mysql = require('promise-mysql');
-const fs = require('fs');
+const passwordHash = require('password-hash'); // could also use bcrypt instead (https://www.npmjs.com/package/bcrypt)
 const cors = require('cors');
+// const bodyParser = require('body-parser');
 
 const app = express();
 app.use(cors());
+// app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+
 // app.set('view engine', 'pug');
 // app.enable('trust proxy');
 
@@ -178,39 +182,25 @@ app.get('/getStoreData', async (req, res) => {
 });
 
 
-/*
-app.post('/', async (req, res) => {
-  const {team} = req.body;
-  const timestamp = new Date();
-
-  if (!team || (team !== 'TABS' && team !== 'SPACES')) {
-    return res.status(400).send('Invalid team specified.').end();
-  }
-
-  pool = pool || (await createPoolAndEnsureSchema());
-  try {
-    const stmt = 'INSERT INTO votes (time_cast, candidate) VALUES (?, ?)';
-    // Pool.query automatically checks out, uses, and releases a connection
-    // back into the pool, ensuring it is always returned successfully.
-    await pool.query(stmt, [timestamp, team]);
-  } catch (err) {
-    // If something goes wrong, handle the error in this section. This might
-    // involve retrying or adjusting parameters depending on the situation.
-    logger.error(err);
-    return res
-      .status(500)
-      .send(
-        'Unable to successfully cast vote! Please check the application logs for more details.'
-      )
-      .end();
-  }
-
-  res.status(200).send(`Successfully voted for ${team} at ${timestamp}`).end();
-});
-*/
 
 app.post('/login', async (req, res) => {
-  res.status(500).send('TODO');
+  // const name = req.params.name;
+  const name = req.body.name;
+  const passwordPlain = req.body.password;
+  // console.log("got name=", name, " pw=", passwordPlain);
+
+  const queryResult = await pool.query('SELECT password_hash FROM Shopper WHERE name=?', [name]);
+  const hash = queryResult[0]['password_hash'];
+
+  // console.log("comparing to hash", hash);
+  if(passwordHash.verify(passwordPlain, hash)) {
+    // successful login
+    res.status(200).end();
+  } else {
+    // failed login
+    res.status(400).send('Login denied');
+  }
+
 });
 
 app.post('/purchase', async (req, res) => {
