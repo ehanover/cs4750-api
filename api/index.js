@@ -145,25 +145,32 @@ app.use(async (req, res, next) => {
 
 
 app.get('/', async (req, res) => {
+  res.send('Hello world');
+});
+
+app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
   pool = pool || (await createPoolAndEnsureSchema());
   try {
-    const stmt = 'SELECT * FROM Rock WHERE id<?';
-    const query = pool.query(stmt, ['5']);
-    console.log('prepared the query');
+    const shopper_id = req.query.shopper_id;
 
-    const queryResults = await query;
-    console.log('Query results:');
-    console.log(queryResults);
-    res.status(200).send('Success');
+    // TODO remove duplicated columns
+    const shopperInfo = await pool.query('SELECT * FROM Shopper WHERE id=?', [shopper_id]);
+    const likedRocks = await pool.query('SELECT * FROM (Liked_rocks INNER JOIN Rock ON Liked_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?', [shopper_id]);
+    const cartRocks = await pool.query('SELECT * FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?', [shopper_id]);
+    const paymentOptions = await pool.query('SELECT * FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?', [shopper_id]);
+
+    const results = {
+      "shopperInfo": shopperInfo[0],
+      "likedRocks": likedRocks,
+      "cartRocks": cartRocks,
+      "paymentOptions": paymentOptions,
+    };
+    res.json(results);
 
   } catch (err) {
     console.log(err);
     res.status(500).send('Unable to load page').end();
   }
-});
-
-app.get('/getUserData', async (req, res) => {
-  res.status(500).send('TODO');
 });
 
 app.get('/getStoreData', async (req, res) => {
