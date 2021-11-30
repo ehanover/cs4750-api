@@ -177,13 +177,29 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
   }
 });
 
-app.get('/getStoreData', async (req, res) => {
-  res.status(500).send('TODO');
+app.get('/getStoreData', async (req, res) => { // takes parameter store_id
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const store_id = req.query.store_id;
+
+    // TODO remove duplicated columns
+    const storeInfo = await pool.query('SELECT * FROM Store WHERE id=?', [store_id]);
+
+    const results = {
+      "storeInfo": storeInfo[0],
+    };
+    res.json(results);
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
 });
 
 
 
 app.post('/login', async (req, res) => {
+  pool = pool || (await createPoolAndEnsureSchema());
   const name = req.body.name;
   const passwordPlain = req.body.password;
 
@@ -205,8 +221,83 @@ app.post('/purchase', async (req, res) => {
   res.status(500).send('TODO');
 });
 
-app.post('/addToCart', async (req, res) => {
-  res.status(500).send('TODO');
+app.post('/addToCart', async (req, res) => { //Needs shopper_id and rock_id
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const shopper_id = req.query.shopper_id;
+    const rock_id = req.query.rock_id;
+
+    const stmt = 'INSERT INTO Liked_rocks VALUES (?, ?)';
+    await pool.query(stmt, [shopper_id, rock_id]);
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
+});
+
+app.post('/transaction', async (req, res) => { //shopper id, store id, rock id
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const shopper_id = req.query.shopper_id;
+    const store_id = req.query.store_id;
+    const rock_id = req.query.rock_id;
+
+    const rock_info = await pool.query('SELECT type_name, weight, is_owner_store FROM Rock WHERE id=?', [rock_id]);
+    const type_name = rock_info[0]['type_name']
+    const weight = rock_info[0]['weight']
+    const is_owner_store = rock_info[0]['is_owner_store']
+
+    const rock_type_details = await pool.query('SELECT price_per_ounce FROM Rock_type WHERE name=?', [type_name]);
+    const price_per_ounce = rock_type_details[0]['price_per_ounce']
+
+    const shopper_info = await pool.query('SELECT * FROM Shopper WHERE id=?', [shopper_id]);
+    const shopper_balance = shopper_info[0]['balance']
+
+    const store_info = await pool.query('SELECT * FROM Store WHERE id=?', [store_id]);
+    const store_balance = store_info[0]['balance']
+    const tax_rate = store_info[0]['tax_rate']
+
+    const discount = await pool.query('SELECT count(*) FROM Discount_shoppers WHERE store_id=? AND shopper_id=?', [store_id, shopper_id]);
+    const discount_bool = (discount > 0);
+
+    const rock_val = (weight * price_per_ounce)
+
+    const upOwner = "UPDATE Rock SET owner_id=? WHERE id=?"
+    const upBool = "UPDATE Rock SET is_owner_store=? WHERE id=?"
+    const upShopper = "UPDATE Shopper SET balance=? WHERE id=?"
+    const upStore = "UPDATE Store SET balance=? WHERE id=?"
+
+    const transactionStmt = 'INSERT INTO Transaction VALUES (?, ?, ?, ?, ?)';
+
+    let date_ob = new Date(Date.now());
+
+    if(is_owner_store == 1){
+      //DEAL WITH TAX RATE and DISCOUNT STUFF
+      if(discount_bool){ //10% DISCOUNT
+        rock_val = 0.90*rock_val;
+      }
+      rock_val = (1+tax_rate)*rock_val;
+
+      await pool.query(upOwner, [shopper_id, rock_id]); //Transfer to shopper
+      await pool.query(upShopper, [(shopper_balance-rock_val), shopper_id]); //Decrease shopper balance
+      await pool.query(upStore, [(store_balance+rock_val), store_id]); //Increase store balance
+      await pool.query(upBool, [0, rock_id]); //No longer in stores possession
+      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 0, date_ob]) //sold to store is false
+    }
+    else {
+      await pool.query(upOwner, [store_id, rock_id]);
+      await pool.query(upShopper, [(shopper_balance+rock_val), shopper_id]); //Increase shopper balance
+      await pool.query(upStore, [(store_balance-rock_val), store_id]); //Decrease store balance
+      await pool.query(upBool, [1, rock_id]);
+      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 1, date_ob])
+    }
+
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
 });
 
 app.post('/sell', async (req, res) => {
