@@ -184,18 +184,16 @@ app.get('/getStoreData', async (req, res) => {
 
 
 app.post('/login', async (req, res) => {
-  // const name = req.params.name;
   const name = req.body.name;
   const passwordPlain = req.body.password;
-  // console.log("got name=", name, " pw=", passwordPlain);
 
-  const queryResult = await pool.query('SELECT password_hash FROM Shopper WHERE name=?', [name]);
+  const queryResult = await pool.query('SELECT id, password_hash FROM Shopper WHERE name=?', [name]);
   const hash = queryResult[0]['password_hash'];
 
   // console.log("comparing to hash", hash);
   if(passwordHash.verify(passwordPlain, hash)) {
     // successful login
-    res.status(200).end();
+    res.json({'shopper_id': queryResult[0]['id']});
   } else {
     // failed login
     res.status(400).send('Login denied');
