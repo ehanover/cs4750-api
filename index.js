@@ -1,5 +1,9 @@
 'use strict';
 // Modified from https://cloud.google.com/sql/docs/mysql/connect-app-engine-standard#node.js
+/*
+alter table Shopper modify column balance float;
+
+*/
 
 const express = require('express');
 const mysql = require('promise-mysql');
@@ -123,10 +127,12 @@ app.use(async (req, res, next) => {
 
 
 app.get('/', async (req, res) => {
+  console.log('/');
   res.send('Hello world');
 });
 
 app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
+  console.log('/getShopperData');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const shopper_id = req.query.shopper_id;
@@ -157,6 +163,7 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
 });
 
 app.get('/getStoreData', async (req, res) => { // takes parameter store_id
+  console.log('/getStoreData');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const store_id = req.query.store_id;
@@ -181,6 +188,7 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
 
 
 app.post('/login', async (req, res) => { // takes parameters name and password (in plaintext)
+  console.log('/login');
   pool = pool || (await createPoolAndEnsureSchema());
   const name = req.body.name;
   const passwordPlain = req.body.password;
@@ -199,17 +207,14 @@ app.post('/login', async (req, res) => { // takes parameters name and password (
 
 });
 
-app.post('/purchase', async (req, res) => {
-  res.status(500).send('TODO');
-});
-
 app.post('/addToCart', async (req, res) => { // Needs shopper_id and rock_id
+  console.log('/addToCart');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const shopper_id = req.query.shopper_id;
     const rock_id = req.query.rock_id;
 
-    const stmt = 'INSERT INTO Liked_rocks VALUES (?, ?)';
+    const stmt = 'INSERT INTO Cart_rocks VALUES (?, ?)';
     await pool.query(stmt, [shopper_id, rock_id]);
 
   } catch (err) {
@@ -219,6 +224,7 @@ app.post('/addToCart', async (req, res) => { // Needs shopper_id and rock_id
 });
 
 app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, rock_id
+  console.log('/transaction');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const shopper_id = req.query.shopper_id;
@@ -282,9 +288,78 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
   }
 });
 
-app.post('/sell', async (req, res) => {
-  res.status(500).send('TODO');
+app.post('/likeRock', async (req, res) => { // Needs shopper_id and rock_id
+  console.log('/likeRock');
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const shopper_id = req.body.shopper_id;
+    const rock_id = req.body.rock_id;
+
+    const alreadyLikedResult = await pool.query('SELECT count(*) FROM Liked_rocks WHERE shopper_id=? AND rock_id=?', [shopper_id, rock_id]);
+    if(alreadyLikedResult[0]['count(*)'] > 0) {
+      res.status(500).send('Rock is already liked by that shopper');
+    } else {
+      await pool.query('INSERT INTO Liked_rocks VALUES (?, ?)', [shopper_id, rock_id]);
+      res.status(200).send('Successfully liked the rock');
+    }
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
 });
+
+app.post('/unlikeRock', async (req, res) => { // Needs shopper_id and rock_id
+  console.log('/unlikeRock');
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const shopper_id = req.body.shopper_id;
+    const rock_id = req.body.rock_id;
+
+    await pool.query('DELETE FROM Liked_rocks WHERE shopper_id=? AND rock_id=?', [shopper_id, rock_id]);
+    res.status(200).send('Unliked the rock');
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
+});
+
+app.post('/deleteRock', async (req, res) => { // Needs rock_id (shopper_id is implied from the db)
+  console.log('/deleteRock');
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const rock_id = req.body.rock_id;
+
+    const rockInfo = await pool.query('SELECT owner_id, weight, price_per_ounce, is_owner_store FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE id=?', [rock_id]);
+    
+    if(rockInfo[0]['is_owner_store'] == 1) {
+      res.status(500).send('This rock cannot be deleted because it is currently owned by the store');
+    } else if(rockInfo[0]['owner_id'] == null) {
+      res.status(500).send('This rock cannot be deleted because it has already been deleted');
+    } else {
+      const shopper_id = rockInfo[0]['owner_id'];
+
+      const rockPrice = rockInfo[0]['price_per_ounce'] * rockInfo[0]['weight'];
+      const oldShopperBalance = (await pool.query('SELECT balance FROM Shopper WHERE id=?', [shopper_id]))[0]['balance']
+      await pool.query('UPDATE Shopper SET balance=? WHERE id=?', [oldShopperBalance + rockPrice, shopper_id]);
+
+      await pool.query('DELETE FROM Cart_rocks WHERE rock_id=?', [rock_id]);
+      await pool.query('DELETE FROM Liked_rocks WHERE rock_id=?', [rock_id]);
+
+      // await pool.query('DELETE FROM Rock WHERE id=?', [rock_id]); // this doesn't work because of the foreign key constraint on transactions
+      await pool.query('UPDATE Rock SET owner_id=NULL, is_owner_store=0 WHERE id=?', [rock_id]); // instead set owner to null and remove from stores
+
+      res.status(200).send('Successfully deleted rock');
+    }
+
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
+});
+
+
 
 
 const PORT = process.env.PORT || 8080;
