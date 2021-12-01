@@ -1,41 +1,15 @@
 'use strict';
 // Modified from https://cloud.google.com/sql/docs/mysql/connect-app-engine-standard#node.js
 
-process.env.DB_USER='user1';
-process.env.DB_PASS='user1';
-// process.env.DB_USER='root';
-// process.env.DB_PASS='rockdbpassword';
-
-process.env.DB_NAME='rock_database2';
-process.env.DB_HOST='34.85.177.29:3306';
-// process.env.DB_SOCKET_PATH='/cloudsql';
-// process.env.INSTANCE_CONNECTION_NAME='rockapp-330402:us-east4:rock-db';
-
-
 const express = require('express');
 const mysql = require('promise-mysql');
 const passwordHash = require('password-hash'); // could also use bcrypt instead (https://www.npmjs.com/package/bcrypt)
 const cors = require('cors');
-// const bodyParser = require('body-parser');
+require('dotenv').config()
 
 const app = express();
 app.use(cors());
-// app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
-
-// app.set('view engine', 'pug');
-// app.enable('trust proxy');
-
-// Automatically parse request body as form data.
-// app.use(express.urlencoded({extended: false}));
-// This middleware is available in Express v4.16.0 onwards
-// app.use(express.json());
-
-// Set Content-Type for all responses for these routes.
-// app.use((req, res, next) => {
-//   res.set('Content-Type', 'text/html');
-//   next();
-// });
 
 
 // I never got this method working
@@ -73,7 +47,6 @@ const createUnixSocketPool = async config => {
 };
 
 const createPool = async () => {
-  console.log("createPool()");
   const config = {
     // 'connectionLimit' is the maximum number of connections the pool is allowed
     // to keep at once.
@@ -108,14 +81,15 @@ const createPool = async () => {
 };
 
 const ensureSchema = async pool => {
+  // console.log("Schema and table checks bypassed");
+
   // Wait for tables to be created (if they don't already exist).
-//   await pool.query(
-//     `CREATE TABLE IF NOT EXISTS votes
-//       ( vote_id SERIAL NOT NULL, time_cast timestamp NOT NULL,
-//       candidate CHAR(6) NOT NULL, PRIMARY KEY (vote_id) );`
-//   );
-//   console.log("Ensured that table 'votes' exists");
-    console.log("Schema and table checks bypassed");
+  // await pool.query(
+  //   `CREATE TABLE IF NOT EXISTS votes
+  //     ( vote_id SERIAL NOT NULL, time_cast timestamp NOT NULL,
+  //     candidate CHAR(6) NOT NULL, PRIMARY KEY (vote_id) );`
+  // );
+  // console.log("Ensured that table 'votes' exists");
 };
 
 const createPoolAndEnsureSchema = async () =>
@@ -127,8 +101,6 @@ const createPoolAndEnsureSchema = async () =>
     .catch(err => {
       throw err;
     });
-
-
 
 // Set up a variable to hold our connection pool. It would be safe to
 // initialize this right away, but we defer its instantiation to ease
@@ -148,6 +120,8 @@ app.use(async (req, res, next) => {
 });
 
 
+
+
 app.get('/', async (req, res) => {
   res.send('Hello world');
 });
@@ -157,11 +131,16 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
   try {
     const shopper_id = req.query.shopper_id;
 
-    // TODO remove duplicated columns
-    const shopperInfo = await pool.query('SELECT * FROM Shopper WHERE id=?', [shopper_id]);
-    const likedRocks = await pool.query('SELECT * FROM (Liked_rocks INNER JOIN Rock ON Liked_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?', [shopper_id]);
-    const cartRocks = await pool.query('SELECT * FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?', [shopper_id]);
-    const paymentOptions = await pool.query('SELECT * FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?', [shopper_id]);
+    const shopperInfo = await pool.query('SELECT id, name, balance FROM Shopper WHERE id=?', [shopper_id]);
+    const likedRocks = await pool.query(
+      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+      FROM (Liked_rocks INNER JOIN Rock ON Liked_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
+    const cartRocks = await pool.query(
+      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+      FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
+    const paymentOptions = await pool.query(
+      `SELECT shopper_id, payment_id, type, card_name, card_number 
+      FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?`, [shopper_id]);
 
     const results = {
       "shopperInfo": shopperInfo[0],
@@ -182,11 +161,14 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
   try {
     const store_id = req.query.store_id;
 
-    // TODO remove duplicated columns
     const storeInfo = await pool.query('SELECT * FROM Store WHERE id=?', [store_id]);
+    const discountShoppers = await pool.query(`
+      SELECT store_id, shopper_id, name, balance 
+      FROM Discount_shoppers INNER JOIN Shopper ON Discount_shoppers.shopper_id=Shopper.id WHERE store_id=?`, [store_id]);
 
     const results = {
       "storeInfo": storeInfo[0],
+      "discountShoppers": discountShoppers,
     };
     res.json(results);
 
@@ -198,7 +180,7 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
 
 
 
-app.post('/login', async (req, res) => {
+app.post('/login', async (req, res) => { // takes parameters name and password (in plaintext)
   pool = pool || (await createPoolAndEnsureSchema());
   const name = req.body.name;
   const passwordPlain = req.body.password;
@@ -221,7 +203,7 @@ app.post('/purchase', async (req, res) => {
   res.status(500).send('TODO');
 });
 
-app.post('/addToCart', async (req, res) => { //Needs shopper_id and rock_id
+app.post('/addToCart', async (req, res) => { // Needs shopper_id and rock_id
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const shopper_id = req.query.shopper_id;
@@ -236,7 +218,7 @@ app.post('/addToCart', async (req, res) => { //Needs shopper_id and rock_id
   }
 });
 
-app.post('/transaction', async (req, res) => { //shopper id, store id, rock id
+app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, rock_id
   pool = pool || (await createPoolAndEnsureSchema());
   try {
     const shopper_id = req.query.shopper_id;
