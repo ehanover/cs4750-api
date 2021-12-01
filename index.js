@@ -144,9 +144,9 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
     const cartRocks = await pool.query(
       `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
       FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
-      const ownedRocks = await pool.query(
-        `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
-        FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE is_owner_store=0 AND owner_id=?`, [shopper_id]);
+    const ownedRocks = await pool.query(
+      `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
+      FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE is_owner_store=0 AND owner_id=?`, [shopper_id]);
     const paymentOptions = await pool.query(
       `SELECT shopper_id, payment_id, type, card_name, card_number
       FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?`, [shopper_id]);
@@ -176,10 +176,14 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
     const discountShoppers = await pool.query(`
       SELECT store_id, shopper_id, name, balance
       FROM Discount_shoppers INNER JOIN Shopper ON Discount_shoppers.shopper_id=Shopper.id WHERE store_id=?`, [store_id]);
-
+    const storeRocks = await pool.query(
+      `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
+      FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE is_owner_store=1 AND owner_id=?`, [store_id]);
+  
     const results = {
       "storeInfo": storeInfo[0],
       "discountShoppers": discountShoppers,
+      "storeRocks": storeRocks
     };
     res.json(results);
 
