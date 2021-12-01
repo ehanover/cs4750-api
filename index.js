@@ -139,16 +139,16 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
 
     const shopperInfo = await pool.query('SELECT id, name, balance FROM Shopper WHERE id=?', [shopper_id]);
     const likedRocks = await pool.query(
-      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
       FROM (Liked_rocks INNER JOIN Rock ON Liked_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
     const cartRocks = await pool.query(
-      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+      `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
       FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
       const ownedRocks = await pool.query(
-        `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+        `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce
         FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE is_owner_store=0 AND owner_id=?`, [shopper_id]);
     const paymentOptions = await pool.query(
-      `SELECT shopper_id, payment_id, type, card_name, card_number 
+      `SELECT shopper_id, payment_id, type, card_name, card_number
       FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?`, [shopper_id]);
 
     const results = {
@@ -174,7 +174,7 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
 
     const storeInfo = await pool.query('SELECT * FROM Store WHERE id=?', [store_id]);
     const discountShoppers = await pool.query(`
-      SELECT store_id, shopper_id, name, balance 
+      SELECT store_id, shopper_id, name, balance
       FROM Discount_shoppers INNER JOIN Shopper ON Discount_shoppers.shopper_id=Shopper.id WHERE store_id=?`, [store_id]);
 
     const results = {
@@ -298,11 +298,17 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
       }
       rock_val = (1+tax_rate)*rock_val;
 
+      if(shopper_balance < rock_val){
+        res.status(500).send('Balance Not Enough').end();
+        return;
+      }
+
       await pool.query(upOwner, [shopper_id, rock_id]); //Transfer to shopper
       await pool.query(upShopper, [(shopper_balance-rock_val), shopper_id]); //Decrease shopper balance
       await pool.query(upStore, [(store_balance+rock_val), store_id]); //Increase store balance
       await pool.query(upBool, [0, rock_id]); //No longer in stores possession
-      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 0, date_ob]) //sold to store is false
+      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 0, date_ob]); //sold to store is false
+
     }
     else {
       await pool.query(upOwner, [store_id, rock_id]);
@@ -312,6 +318,7 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
       await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 1, date_ob])
     }
 
+    await pool.query("DELETE FROM Cart_rocks WHERE rock_id=?", [rock_id]); //Remove from Everyones Cart
 
   } catch (err) {
     console.log(err);
@@ -362,7 +369,7 @@ app.post('/deleteRock', async (req, res) => { // Needs rock_id (shopper_id is im
     const rock_id = req.body.rock_id;
 
     const rockInfo = await pool.query('SELECT owner_id, weight, price_per_ounce, is_owner_store FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE id=?', [rock_id]);
-    
+
     if(rockInfo[0]['is_owner_store'] == 1) {
       res.status(500).send('This rock cannot be deleted because it is currently owned by the store');
     } else if(rockInfo[0]['owner_id'] == null) {
