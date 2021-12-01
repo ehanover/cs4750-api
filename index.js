@@ -262,7 +262,7 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
     const store_id = req.body.store_id;
     const rock_id = req.body.rock_id;
 
-    const rock_info = await pool.query('SELECT type_name, weight, is_owner_store FROM Rock WHERE id=?', [rock_id]);
+    const rock_info = await pool.query('SELECT owner_id, type_name, weight, is_owner_store FROM Rock WHERE id=?', [rock_id]);
     const type_name = rock_info[0]['type_name']
     const weight = rock_info[0]['weight']
     const is_owner_store = rock_info[0]['is_owner_store']
@@ -280,25 +280,28 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
     const discount = await pool.query('SELECT count(*) FROM Discount_shoppers WHERE store_id=? AND shopper_id=?', [store_id, shopper_id]);
     const discount_bool = (discount > 0);
 
-    const rock_val = (weight * price_per_ounce)
+    let rock_val = (weight * price_per_ounce)
 
     const upOwner = "UPDATE Rock SET owner_id=? WHERE id=?"
     const upBool = "UPDATE Rock SET is_owner_store=? WHERE id=?"
     const upShopper = "UPDATE Shopper SET balance=? WHERE id=?"
     const upStore = "UPDATE Store SET balance=? WHERE id=?"
 
-    const transactionStmt = 'INSERT INTO Transaction VALUES (?, ?, ?, ?, ?)';
+    const transactionStmt = 'INSERT INTO Transaction VALUES (?, ?, ?, NOW(), ?)';
 
-    let date_ob = new Date(Date.now());
+    console.log("  fetched all data");
 
     if(is_owner_store == 1){
+      console.log("  owner is store");
       //DEAL WITH TAX RATE and DISCOUNT STUFF
       if(discount_bool){ //10% DISCOUNT
+        console.log("  shopper has discount");
         rock_val = 0.90*rock_val;
       }
       rock_val = (1+tax_rate)*rock_val;
 
       if(shopper_balance < rock_val){
+        console.log("  shopper can't afford rock");
         res.status(500).send('Balance Not Enough').end();
         return;
       }
@@ -307,18 +310,18 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
       await pool.query(upShopper, [(shopper_balance-rock_val), shopper_id]); //Decrease shopper balance
       await pool.query(upStore, [(store_balance+rock_val), store_id]); //Increase store balance
       await pool.query(upBool, [0, rock_id]); //No longer in stores possession
-      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 0, date_ob]); //sold to store is false
-
-    }
-    else {
+      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 0]); //sold to store is false
+    } else { // rock is being sold to the store
+      console.log("  owner is not store");
       await pool.query(upOwner, [store_id, rock_id]);
       await pool.query(upShopper, [(shopper_balance+rock_val), shopper_id]); //Increase shopper balance
       await pool.query(upStore, [(store_balance-rock_val), store_id]); //Decrease store balance
       await pool.query(upBool, [1, rock_id]);
-      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 1, date_ob])
+      await pool.query(transactionStmt, [rock_id, shopper_id, store_id, 1])
     }
 
     await pool.query("DELETE FROM Cart_rocks WHERE rock_id=?", [rock_id]); //Remove from Everyones Cart
+    res.status(200).send('Successfully processed transaction');
 
   } catch (err) {
     console.log(err);
