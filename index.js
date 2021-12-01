@@ -211,11 +211,34 @@ app.post('/addToCart', async (req, res) => { // Needs shopper_id and rock_id
   console.log('/addToCart');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
-    const shopper_id = req.query.shopper_id;
-    const rock_id = req.query.rock_id;
+    const shopper_id = req.body.shopper_id;
+    const rock_id = req.body.rock_id;
 
-    const stmt = 'INSERT INTO Cart_rocks VALUES (?, ?)';
+    const alreadyCartResult = await pool.query('SELECT count(*) FROM Cart_rocks WHERE shopper_id=? AND rock_id=?', [shopper_id, rock_id]);
+    if(alreadyCartResult[0]['count(*)'] > 0) {
+      res.status(500).send('That rock is already in that shopper\'s cart');
+    } else {
+      const stmt = 'INSERT INTO Cart_rocks VALUES (?, ?)';
+      await pool.query(stmt, [shopper_id, rock_id]);
+      res.status(200).send('Successfully added rock to cart');
+    }
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
+  }
+});
+
+app.post('/removeFromCart', async (req, res) => { // Needs shopper_id and rock_id
+  console.log('/removeFromCart');
+  pool = pool || (await createPoolAndEnsureSchema());
+  try {
+    const shopper_id = req.body.shopper_id;
+    const rock_id = req.body.rock_id;
+
+    const stmt = 'DELETE FROM Cart_rocks WHERE shopper_id=? AND rock_id=?';
     await pool.query(stmt, [shopper_id, rock_id]);
+    res.status(200).send('Successfully removed rock from cart');
 
   } catch (err) {
     console.log(err);
@@ -227,9 +250,9 @@ app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, ro
   console.log('/transaction');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
-    const shopper_id = req.query.shopper_id;
-    const store_id = req.query.store_id;
-    const rock_id = req.query.rock_id;
+    const shopper_id = req.body.shopper_id;
+    const store_id = req.body.store_id;
+    const rock_id = req.body.rock_id;
 
     const rock_info = await pool.query('SELECT type_name, weight, is_owner_store FROM Rock WHERE id=?', [rock_id]);
     const type_name = rock_info[0]['type_name']
