@@ -144,6 +144,9 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
     const cartRocks = await pool.query(
       `SELECT shopper_id, rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
       FROM (Cart_rocks INNER JOIN Rock ON Cart_rocks.rock_id=Rock.id) INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE shopper_id=?`, [shopper_id]);
+      const ownedRocks = await pool.query(
+        `SELECT id AS rock_id, owner_id, description, weight, origin, type_name, is_owner_store, rarity, price_per_ounce 
+        FROM Rock INNER JOIN Rock_type ON Rock.type_name=Rock_type.name WHERE is_owner_store=0 AND owner_id=?`, [shopper_id]);
     const paymentOptions = await pool.query(
       `SELECT shopper_id, payment_id, type, card_name, card_number 
       FROM Has_payment INNER JOIN Payment_option ON Has_payment.payment_id=Payment_option.id WHERE shopper_id=?`, [shopper_id]);
@@ -152,6 +155,7 @@ app.get('/getShopperData', async (req, res) => { // takes parameter shopper_id
       "shopperInfo": shopperInfo[0],
       "likedRocks": likedRocks,
       "cartRocks": cartRocks,
+      "ownedRocks": ownedRocks,
       "paymentOptions": paymentOptions,
     };
     res.json(results);
@@ -207,7 +211,7 @@ app.post('/login', async (req, res) => { // takes parameters name and password (
     }
   } catch (err) {
     console.log(err);
-    res.status(500).send('Unable to load page').end();
+    res.status(400).send('Login denied').end(); // this will happen if the name entered isn't in the database
   }
 });
 
