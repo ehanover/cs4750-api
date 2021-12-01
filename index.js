@@ -190,21 +190,25 @@ app.get('/getStoreData', async (req, res) => { // takes parameter store_id
 app.post('/login', async (req, res) => { // takes parameters name and password (in plaintext)
   console.log('/login');
   pool = pool || (await createPoolAndEnsureSchema());
-  const name = req.body.name;
-  const passwordPlain = req.body.password;
+  try {
+    const name = req.body.name;
+    const passwordPlain = req.body.password;
 
-  const queryResult = await pool.query('SELECT id, password_hash FROM Shopper WHERE name=?', [name]);
-  const hash = queryResult[0]['password_hash'];
+    const queryResult = await pool.query('SELECT id, password_hash FROM Shopper WHERE name=?', [name]);
+    const hash = queryResult[0]['password_hash'];
 
-  // console.log("comparing to hash", hash);
-  if(passwordHash.verify(passwordPlain, hash)) {
-    // successful login
-    res.json({'shopper_id': queryResult[0]['id']});
-  } else {
-    // failed login
-    res.status(400).send('Login denied');
+    // console.log("comparing to hash", hash);
+    if(passwordHash.verify(passwordPlain, hash)) {
+      // successful login
+      res.json({'shopper_id': queryResult[0]['id']});
+    } else {
+      // failed login
+      res.status(400).send('Login denied');
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).send('Unable to load page').end();
   }
-
 });
 
 app.post('/addToCart', async (req, res) => { // Needs shopper_id and rock_id
