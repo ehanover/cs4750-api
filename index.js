@@ -254,18 +254,28 @@ app.post('/removeFromCart', async (req, res) => { // Needs shopper_id and rock_i
   }
 });
 
-app.post('/transaction', async (req, res) => { // Needs shopper_id, store_id, rock_id
+app.post('/transaction', async (req, res) => { // Needs recipient_id and rock_id          shopper_id, store_id, rock_id
   console.log('/transaction');
   pool = pool || (await createPoolAndEnsureSchema());
   try {
-    const shopper_id = req.body.shopper_id;
-    const store_id = req.body.store_id;
+    const recipient_id = req.body.recipient_id;
     const rock_id = req.body.rock_id;
+    let shopper_id = 0; //Temp Val
+    let store_id = 0; //Temp Val
 
     const rock_info = await pool.query('SELECT owner_id, type_name, weight, is_owner_store FROM Rock WHERE id=?', [rock_id]);
     const type_name = rock_info[0]['type_name']
     const weight = rock_info[0]['weight']
     const is_owner_store = rock_info[0]['is_owner_store']
+
+    if(is_owner_store == 1){
+      store_id = rock_info[0]['owner_id']
+      shopper_id = recipient_id;
+    }
+    else{
+      shopper_id = rock_info[0]['owner_id']
+      store_id = recipient_id;
+    }
 
     const rock_type_details = await pool.query('SELECT price_per_ounce FROM Rock_type WHERE name=?', [type_name]);
     const price_per_ounce = rock_type_details[0]['price_per_ounce']
